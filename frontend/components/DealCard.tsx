@@ -30,9 +30,9 @@ export default function DealCard({ product }: DealCardProps) {
         <div className="group relative bg-card text-card-foreground rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 border border-border flex flex-col h-full">
             {/* Image Container */}
             <div className="relative aspect-square w-full bg-white p-4 flex items-center justify-center overflow-hidden">
-                {product.image ? (
+                {product.image_url ? (
                     <Image
-                        src={product.image}
+                        src={product.image_url}
                         alt={product.title}
                         fill
                         className="object-contain group-hover:scale-105 transition-transform duration-300"

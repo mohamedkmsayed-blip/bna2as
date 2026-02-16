@@ -3,7 +3,7 @@ export interface Product {
     source: 'amazon' | 'jumia' | 'noon';
     external_id: string;
     title: string;
-    image: string | null;
+    image_url: string | null;
     category: string | null;
     url: string;
     affiliate_url: string | null;
