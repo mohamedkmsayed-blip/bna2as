@@ -145,3 +145,41 @@ def manual_scrape():
     Call via: modal run scheduler.py::manual_scrape
     """
     return _run_extraction()
+
+
+# ---------------------------------------------------------------------------
+# Clear Database (On-Demand)
+# ---------------------------------------------------------------------------
+
+@app.function(
+    image=image,
+    volumes={VOLUME_MOUNT: volume},
+    timeout=60,
+)
+def clear_database():
+    """
+    Clear all products and logs from database (fresh start).
+    Call via: modal run scheduler.py::clear_database
+    """
+    import sqlite3
+    
+    init_db(DB_PATH)
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Count before deletion
+    cursor.execute("SELECT COUNT(*) FROM products")
+    product_count = cursor.fetchone()[0]
+    
+    # Delete all data
+    cursor.execute("DELETE FROM products")
+    cursor.execute("DELETE FROM clicks")
+    cursor.execute("DELETE FROM scrape_logs")
+    
+    conn.commit()
+    conn.close()
+    volume.commit()
+    
+    logger.info(f"[clear_database] Removed {product_count} products")
+    return {"cleared": product_count}

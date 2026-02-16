@@ -46,6 +46,7 @@ JUMIA_CATEGORY_URLS = {
 class JumiaScraper(BaseScraper):
     """
     Jumia Egypt scraper with KOL API primary and web scraping fallback.
+    Enhanced with realistic browser headers and session handling to bypass bot detection.
     """
 
     SOURCE = "jumia"
@@ -55,6 +56,24 @@ class JumiaScraper(BaseScraper):
         self.kol_id = os.environ.get("JUMIA_KOL_ID", "")
         self.affiliate_tag = os.environ.get("JUMIA_AFFILIATE_TAG", "")
         self.has_kol_keys = bool(self.kol_id)
+        
+        # Enhanced headers to bypass Jumia bot detection
+        self.client.headers.update({
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+            "Cache-Control": "max-age=0",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+        })
+        
+        # Session cookie storage
+        self.session_initialized = False
 
     def scrape(self) -> list[Product]:
         """
@@ -89,12 +108,53 @@ class JumiaScraper(BaseScraper):
         logger.warning("[jumia] KOL API integration pending — using web fallback")
         return self._scrape_via_web()
 
+    # ----- Session Management -----
+
+    def _init_session(self) -> bool:
+        """
+        Initialize session by visiting Jumia homepage to get cookies.
+        This helps bypass bot detection.
+        """
+        if self.session_initialized:
+            return True
+        
+        try:
+            logger.info("[jumia] Initializing session...")
+            
+            # Visit homepage first to get session cookies
+            home_url = "https://www.jumia.com.eg/"
+            response = self.client.get(home_url, timeout=30)
+            
+            if response.status_code == 200:
+                # Set referer for subsequent requests
+                self.client.headers.update({
+                    "Referer": "https://www.jumia.com.eg/"
+                })
+                self.session_initialized = True
+                logger.info("[jumia] Session initialized successfully")
+                return True
+            else:
+                logger.warning(f"[jumia] Failed to initialize session: HTTP {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logger.warning(f"[jumia] Session initialization failed: {e}")
+            return False
+
     # ----- Web Scraping Strategy -----
 
     def _scrape_via_web(self) -> list[Product]:
         """Scrape Jumia Egypt deals and category pages."""
         products = []
         seen_ids = set()
+        
+        # Try to initialize session first
+        session_ok = self._init_session()
+        if not session_ok:
+            logger.warning("[jumia] Proceeding without session initialization")
+        
+        # Add random delay to look more human
+        import random
 
         # Scrape deals pages first
         for url in JUMIA_DEALS_URLS:
@@ -103,7 +163,8 @@ class JumiaScraper(BaseScraper):
                 if p.id not in seen_ids:
                     seen_ids.add(p.id)
                     products.append(p)
-            time.sleep(1.5)  # Rate limiting
+            # Random delay between 2-4 seconds
+            time.sleep(random.uniform(2.0, 4.0))
 
         # Then scrape top category pages (page 1 only)
         for cat_name, cat_url in JUMIA_CATEGORY_URLS.items():
@@ -114,14 +175,29 @@ class JumiaScraper(BaseScraper):
                 if p.id not in seen_ids:
                     seen_ids.add(p.id)
                     products.append(p)
-            time.sleep(1.5)
+            # Random delay between 2-4 seconds
+            time.sleep(random.uniform(2.0, 4.0))
 
         logger.info(f"[jumia] Scraped {len(products)} total products")
         return products
 
     def _scrape_page(self, url: str, category: Optional[str] = None) -> list[Product]:
         """Scrape a single Jumia page for products."""
+        # Try with current headers first
         response = self.safe_request(url)
+        
+        # If 403, try with mobile user agent
+        if not response or response.status_code == 403:
+            logger.info("[jumia] Trying mobile user agent...")
+            original_ua = self.client.headers.get("User-Agent")
+            self.client.headers.update({
+                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+            })
+            response = self.safe_request(url)
+            # Restore original UA
+            if original_ua:
+                self.client.headers.update({"User-Agent": original_ua})
+        
         if not response:
             return []
 
